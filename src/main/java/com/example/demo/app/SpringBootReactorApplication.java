@@ -1,9 +1,15 @@
 package com.example.demo.app;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.CountDownLatch;
 
 import com.example.demo.app.models.UsuarioComentario;
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -157,10 +163,117 @@ private static final Logger log = LoggerFactory.getLogger(SpringBootReactorAppli
 		usuarioComentarios.subscribe(usuarioComentario -> log.info(usuarioComentario.toString()));
 	}
 
+	public void ejemploZipWithRangos() {
+	Flux.just(1,2,3,4)
+			.map(i-> (i*2))
+			.zipWith(Flux.range(0,4), (uno, dos)->
+				String.format("Primer Flux %d, SegundoFlux: %d", uno, dos )
+			).subscribe(texto-> log.info(texto));
+	}
+
+	public void ejemploInterval() {
+		Flux<Integer> rango = Flux.range(1, 12);
+		Flux<Long> retrado = Flux.interval(Duration.ofSeconds(1));
+
+		rango.zipWith(retrado, (ran, ret)-> ran)
+				.doOnNext(i-> log.info(i.toString()))
+				.blockLast();
+	}
+
+	public void ejemploDelayElements() throws InterruptedException {
+		Flux<Integer> rango = Flux.range(1, 12)
+						.delayElements(Duration.ofSeconds(1))
+								.doOnNext(i-> log.info(i.toString()));
+		rango.blockLast();
+		//Thread.sleep(13000);
+
+	}
+
+	public void IntervaloInfinto() throws InterruptedException {
+		CountDownLatch latch = new CountDownLatch(1);
+
+		Flux.interval(Duration.ofSeconds(1))
+				.doOnTerminate(latch::countDown)
+				.flatMap(i-> {
+					if(i>=20){
+						return Flux.error(new InterruptedException("Solo Hasta 5"));
+					}
+					return Flux.just(i);
+				})
+				.map(i->"Hola "+i)
+				.doOnNext(s->log.info(s))
+				.blockLast();
+				//.subscribe(s->log.info(s), e->log.error(e.getMessage()));
+
+		latch.wait();;
+	}
+
+	public void ejemploIntervalDesdeCreate(){
+		Flux.create(emitter->{
+			Timer time = new Timer();
+			time.schedule(new TimerTask() {
+				private Integer contador = 0;
+				@Override
+				public void run() {
+					emitter.next(++contador);
+					if(contador==10){
+						time.cancel();
+						emitter.complete();
+					}
+				}
+			}, 1000, 1000);
+		})
+				.doOnNext(next -> log.info(next.toString()))
+				.doOnComplete(()-> log.info("Terminamos"))
+				.subscribe();
+	}
+
+	public void ejemploContraPresion(){
+		Flux.range(1,10)
+				.log()
+				.subscribe(new Subscriber<Integer>() {
+					private Subscription s;
+					private Integer limite =2;
+					private Integer consumido =0;
+
+					@Override
+					public void onSubscribe(Subscription s) {
+						this.s =s;
+						s.request(limite);
+					}
+
+					@Override
+					public void onNext(Integer integer) {
+						log.info(toString());
+						consumido++;
+						if(consumido == limite){
+							s.request(limite);
+						}
+					}
+
+					@Override
+					public void onError(Throwable t) {
+
+					}
+
+					@Override
+					public void onComplete() {
+
+					}
+				});
+	}
+
+	public void ejemploContraPresionLmitRate(){
+		Flux.range(1,10)
+				.log()
+				.limitRate(5)
+				.subscribe();
+	}
+
+
 	
 	public void run(String... args) throws Exception {
-
-		ejemploUsuarioZipWithForm2();
+		ejemploContraPresionLmitRate();
 	}
 
 }
